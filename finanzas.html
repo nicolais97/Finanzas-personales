@@ -175,14 +175,22 @@ function updHdr(){
   document.getElementById('stInv').textContent=fmt(inv);
 }
 
-function mRow(i){
+function mRow(i, idx){
   var isI=i.tipo==='ingreso',isV=i.tipo==='inversión';
   var em=isI?'💰':isV?'📈':(EMJ[i.cat]||'📦');
   var bg=isI?'rgba(200,241,53,.15)':isV?'rgba(180,143,255,.15)':(CBG[i.cat]||CBG['Otros']);
   var cl=isI?'var(--ac)':isV?'var(--pur)':'var(--red)';
   var sg=isI?'+':isV?'':'−';
   var lb=isI?'Ingreso':isV?'Inversión':i.cat;
-  return '<div class="mi"><div class="mico" style="background:'+bg+'">'+em+'</div><div class="minf"><div class="mds">'+i.desc+'</div><div class="mmt">'+lb+' · '+i.fecha+'</div></div><div class="mam" style="color:'+cl+'">'+sg+fmt(i.monto)+'</div></div>';
+  var delBtn = idx !== undefined ? '<button onclick="delMov('+idx+')" style="background:transparent;border:none;color:var(--tx2);font-size:16px;cursor:pointer;padding:4px 6px;flex-shrink:0;line-height:1" title="Borrar">🗑</button>' : '';
+  return '<div class="mi"><div class="mico" style="background:'+bg+'">'+em+'</div><div class="minf"><div class="mds">'+i.desc+'</div><div class="mmt">'+lb+' · '+i.fecha+'</div></div><div style="display:flex;align-items:center;gap:6px"><div class="mam" style="color:'+cl+'">'+sg+fmt(i.monto)+'</div>'+delBtn+'</div></div>';
+}
+
+function delMov(idx){
+  if(!confirm('¿Borrar este movimiento?')) return;
+  DB.splice(idx, 1);
+  save();
+  render();
 }
 
 function render(){
@@ -203,7 +211,7 @@ function pgRes(){
     return '<div class="bw"><div class="bt"><span class="bn">'+EMJ[c]+' '+c+'</span><span class="ba">'+fmt(tots[c])+'</span></div><div class="btr"><div class="bf" style="width:'+Math.round(tots[c]/mx*100)+'%"></div></div></div>';
   }).join('');
   var rec=DB.slice().reverse().slice(0,6);
-  var movs=rec.length?rec.map(mRow).join(''):'<div class="empty">Sin movimientos aún</div>';
+  var movs=rec.length?rec.map(function(item){ var realIdx=DB.indexOf(item); return mRow(item,realIdx); }).join(''):'<div class="empty">Sin movimientos aún</div>';
   return '<div class="stl">Gastos del mes</div>'+bars+'<div class="stl" style="margin-top:24px">Últimos movimientos</div>'+movs;
 }
 
@@ -216,7 +224,7 @@ function pgHist(){
   var its=DB.slice().reverse();
   if(fl.tipo)its=its.filter(function(i){return i.tipo===fl.tipo;});
   if(fl.cat)its=its.filter(function(i){return i.cat===fl.cat;});
-  return '<div class="frow">'+tc+'</div><div class="frow">'+cc+'</div>'+(its.length?its.map(mRow).join(''):'<div class="empty">Sin resultados</div>');
+  return '<div class="frow">'+tc+'</div><div class="frow">'+cc+'</div>'+(its.length?its.map(function(item){ var realIdx=DB.indexOf(item); return mRow(item,realIdx); }).join(''):'<div class="empty">Sin resultados</div>');
 }
 
 function setFl(k,v){fl[k]=v;render();}
@@ -268,7 +276,7 @@ function genRep(){
     var pt=gas>0?Math.round(cats[c]/gas*100):0;
     return '<div class="bw"><div class="bt"><span class="bn">'+EMJ[c]+' '+c+'</span><span class="ba">'+fmt(cats[c])+' <span style="font-size:10px;color:var(--tx2)">('+pt+'%)</span></span></div><div class="btr"><div class="bf" style="width:'+Math.round(cats[c]/mx*100)+'%"></div></div></div>';
   }).join(''):'';
-  var mvs=its.length?its.slice().reverse().map(mRow).join(''):'<div class="empty">Sin movimientos</div>';
+  var mvs=its.length?its.slice().reverse().map(function(item){ var realIdx=DB.indexOf(item); return mRow(item,realIdx); }).join(''):'<div class="empty">Sin movimientos</div>';
   var el=document.getElementById('rpRes');
   if(el)el.innerHTML=
     '<div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--tx2);margin-bottom:12px;font-weight:600">'+tit+'</div>'+
