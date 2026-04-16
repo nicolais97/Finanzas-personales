@@ -466,7 +466,7 @@ async function doAI(){
   document.getElementById('loadingAI').style.display='block';
   document.getElementById('previewDiv').innerHTML='';
   try{const res=await callAI([{role:'user',content:v}]);showPreview(res);}
-  catch(e){showToast('Error. Intentá de nuevo.');}
+  catch(e){alert('Error: '+e.message);}
   document.getElementById('loadingAI').style.display='none';
 }
 
@@ -482,7 +482,7 @@ async function doImg(input){
       const d=await r.json();
       const t=(d.content||[]).map(x=>x.text||'').join('');
       showPreview(JSON.parse(t.replace(/```json|```/g,'').trim()));
-    }catch(e){showToast('No pude leer el ticket.');}
+    }catch(e){alert('Error ticket: '+e.message);}
     document.getElementById('loadingAI').style.display='none';
   };
   reader.readAsDataURL(file);
@@ -527,8 +527,8 @@ render();
 function openModal(){document.getElementById('modalOverlay').classList.add('open');document.body.style.overflow='hidden';}
 function closeModal(){document.getElementById('modalOverlay').classList.remove('open');document.body.style.overflow='';document.getElementById('modalPreview').innerHTML='';document.getElementById('modalAiField').value='';document.getElementById('modalDesc').value='';document.getElementById('modalMonto').value='';}
 function closeModalOutside(e){if(e.target===document.getElementById('modalOverlay'))closeModal();}
-async function modalDoAI(){var v=document.getElementById('modalAiField').value.trim();if(!v)return;document.getElementById('modalLoading').style.display='block';document.getElementById('modalPreview').innerHTML='';try{var res=await callAI([{role:'user',content:v}]);showModalPreview(res);}catch(e){showToast('Error.');}document.getElementById('modalLoading').style.display='none';}
-async function modalDoImg(input){var file=input.files[0];if(!file)return;document.getElementById('modalLoading').style.display='block';var reader=new FileReader();reader.onload=async function(e){var b64=e.target.result.split(',')[1];try{var r=await fetch('https://blue-night-9012finanzas-proxy.npaesky.workers.dev',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':'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','anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:200,system:SYS,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:file.type,data:b64}},{type:'text',text:'Extrae datos del ticket'}]}]})});var d=await r.json();var t=(d.content||[]).map(function(x){return x.text||'';}).join('');showModalPreview(JSON.parse(t.replace(/```json|```/g,'').trim()));}catch(e){showToast('No pude leer el ticket.');}document.getElementById('modalLoading').style.display='none';};reader.readAsDataURL(file);}
+async function modalDoAI(){var v=document.getElementById('modalAiField').value.trim();if(!v)return;document.getElementById('modalLoading').style.display='block';document.getElementById('modalPreview').innerHTML='';try{var res=await callAI([{role:'user',content:v}]);showModalPreview(res);}catch(e){alert('Error IA: '+e.message);}document.getElementById('modalLoading').style.display='none';}
+async function modalDoImg(input){var file=input.files[0];if(!file)return;document.getElementById('modalLoading').style.display='block';var reader=new FileReader();reader.onload=async function(e){var b64=e.target.result.split(',')[1];try{var r=await fetch('https://blue-night-9012finanzas-proxy.npaesky.workers.dev',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':'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','anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:200,system:SYS,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:file.type,data:b64}},{type:'text',text:'Extrae datos del ticket'}]}]})});var d=await r.json();var t=(d.content||[]).map(function(x){return x.text||'';}).join('');showModalPreview(JSON.parse(t.replace(/```json|```/g,'').trim()));}catch(e){alert('Error ticket: '+e.message);}document.getElementById('modalLoading').style.display='none';};reader.readAsDataURL(file);}
 function showModalPreview(res){var enc=encodeURIComponent(JSON.stringify(res));document.getElementById('modalPreview').innerHTML='<div class="preview-box" style="margin-bottom:12px"><div class="preview-row"><div><div class="preview-desc">'+res.desc+'</div><div class="preview-meta">'+res.tipo+' - '+res.cat+'</div></div><div class="preview-amt">'+fmt(res.monto)+'</div></div><div class="preview-btns"><button class="btn-confirm" onclick="modalConfirmAdd(\''+enc+'\')">Confirmar</button><button style="background:var(--surface);color:var(--text);border:.5px solid var(--border);flex:1;padding:10px;border-radius:var(--r);font-family:Syne,sans-serif;font-size:12px;font-weight:700;cursor:pointer" onclick="document.getElementById(\'modalPreview\').innerHTML=\'\'">Cancelar</button></div></div>';}
 function modalConfirmAdd(enc){var res=JSON.parse(decodeURIComponent(enc));DB.push(Object.assign({},res,{fecha:today()}));save();showToast('Guardado');closeModal();render();}
 function modalDoManual(){var desc=document.getElementById('modalDesc').value.trim();var monto=parseFloat(document.getElementById('modalMonto').value);var tipo=document.getElementById('modalTipo').value;var cat=document.getElementById('modalCat').value;if(!desc||!monto){showToast('Completa descripcion y monto');return;}DB.push({desc:desc,monto:monto,tipo:tipo,cat:cat,fecha:today()});save();showToast('Guardado');closeModal();render();}
