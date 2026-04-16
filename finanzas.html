@@ -215,9 +215,13 @@ let movFilter={tipo:'',cat:''};
 function goPage(name){
   curPage=name;
   document.querySelectorAll('.tabs .tab').forEach((el,i)=>{
-    el.classList.toggle('active',['resumen','movimientos','agregar'][i]===name);
+    el.classList.toggle('active',['resumen','movimientos','reportes','agregar'][i]===name);
   });
-  
+  if(name==='movimientos') renderMov();
+  if(name==='resumen') renderResumen();
+  if(name==='reportes'){document.getElementById('mainContent').innerHTML=renderReportesHTML();}
+}
+
 function getAvailableMonths(){
   const set=new Set();
   DB.forEach(i=>{ const m=i.fecha.substring(0,7); set.add(m); });
