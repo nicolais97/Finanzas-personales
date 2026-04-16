@@ -122,6 +122,19 @@ select.field option{background:var(--surface)}
 .filter-chip.active{background:var(--accent);color:#0a0a0a;border-color:var(--accent)}
 
 .empty-state{text-align:center;padding:40px 20px;color:var(--text2);font-size:13px;letter-spacing:.05em}
+
+/* FAB */
+.fab{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:var(--accent);color:#0a0a0a;border:none;border-radius:30px;padding:16px 32px;font-family:'Syne',sans-serif;font-size:14px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;z-index:200;display:flex;align-items:center;gap:10px;box-shadow:0 4px 24px rgba(200,241,53,.25);transition:transform .15s,opacity .15s}
+.fab:active{transform:translateX(-50%) scale(0.96);opacity:.85}
+.fab-icon{font-size:20px;line-height:1}
+
+/* MODAL OVERLAY */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:300;display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:opacity .25s}
+.modal-overlay.open{opacity:1;pointer-events:all}
+.modal-sheet{background:var(--surface);border-radius:24px 24px 0 0;padding:20px 20px 40px;width:100%;max-width:430px;transform:translateY(100%);transition:transform .3s cubic-bezier(.4,0,.2,1)}
+.modal-overlay.open .modal-sheet{transform:translateY(0)}
+.modal-handle{width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 20px}
+.modal-title{font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:16px}
 </style>
 </head>
 <body>
@@ -144,10 +157,41 @@ select.field option{background:var(--surface)}
 <div class="tabs">
   <div class="tab active" onclick="goPage('resumen')">Resumen</div>
   <div class="tab" onclick="goPage('movimientos')">Historial</div>
+  <div class="tab" onclick="goPage('reportes')">Reportes</div>
   <div class="tab" onclick="goPage('agregar')">+ Nuevo</div>
 </div>
 
 <div class="content" id="mainContent"></div>
+
+<button class="fab" onclick="openModal()"><span class="fab-icon">＋</span> Agregar</button>
+
+<div class="modal-overlay" id="modalOverlay" onclick="closeModalOutside(event)">
+  <div class="modal-sheet" id="modalSheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Registrar movimiento</div>
+    <div class="ia-box" style="margin-bottom:12px">
+      <div class="ia-header"><div class="ia-dot"></div><div class="ia-title">Escribí en lenguaje natural</div></div>
+      <textarea class="field" id="modalAiField" rows="2" placeholder='Ej: "gasté $1500 en el super", "cobré sueldo $200000"'></textarea>
+      <button class="btn-main" style="margin-top:8px" onclick="modalDoAI()">Procesar con IA</button>
+    </div>
+    <label class="file-label" for="modalImgFile" style="margin-bottom:12px;display:flex">📷 &nbsp;Foto de ticket</label>
+    <input type="file" id="modalImgFile" accept="image/*" style="display:none" onchange="modalDoImg(this)"/>
+    <div class="loading-text" id="modalLoading" style="display:none">Procesando...</div>
+    <div id="modalPreview"></div>
+    <div style="border-top:.5px solid var(--border);padding-top:14px;margin-top:8px">
+      <div class="modal-title">Manual</div>
+      <div class="field-row two" style="margin-bottom:8px">
+        <input class="field" id="modalDesc" placeholder="Descripción"/>
+        <input class="field" type="number" id="modalMonto" placeholder="Monto"/>
+      </div>
+      <div class="field-row two" style="margin-bottom:10px">
+        <select class="field" id="modalTipo"><option value="gasto">Gasto</option><option value="ingreso">Ingreso</option><option value="inversión">Inversión</option></select>
+        <select class="field" id="modalCat"><option>Comida</option><option>Transporte</option><option>Salud</option><option>Ocio</option><option>Inversiones</option><option>Otros</option></select>
+      </div>
+      <button class="btn-main" onclick="modalDoManual()">Guardar</button>
+    </div>
+  </div>
+</div>
 
 <div class="toast" id="toast"></div>
 
@@ -173,7 +217,120 @@ function goPage(name){
   document.querySelectorAll('.tabs .tab').forEach((el,i)=>{
     el.classList.toggle('active',['resumen','movimientos','agregar'][i]===name);
   });
-  render();
+  
+function getAvailableMonths(){
+  const set=new Set();
+  DB.forEach(i=>{ const m=i.fecha.substring(0,7); set.add(m); });
+  const arr=Array.from(set).sort().reverse();
+  return arr;
+}
+
+function renderReportesHTML(){
+  const months=getAvailableMonths();
+  const opts=months.map(m=>{
+    const [y,mo]=m.split('-');
+    const label=MONTHS[parseInt(mo)-1]+' '+y;
+    return '<option value="'+m+'">'+label+'</option>';
+  }).join('');
+  const periodoOpts='<option value="custom">Periodo personalizado</option>'+opts;
+  
+  return `<div style="padding-bottom:20px">
+    <div class="ia-box" style="margin-bottom:14px">
+      <div class="modal-title" style="margin-bottom:12px">Seleccionar periodo</div>
+      <select class="field" id="repMode" onchange="repModeChange()" style="margin-bottom:10px">
+        <option value="">-- Elegir mes --</option>
+        ${opts}
+        <option value="custom">Periodo personalizado</option>
+      </select>
+      <div id="repCustom" style="display:none">
+        <div class="field-row two" style="margin-bottom:8px">
+          <div><div style="font-size:11px;color:var(--text2);margin-bottom:4px;letter-spacing:.06em;text-transform:uppercase">Desde</div><input class="field" type="date" id="repFrom"/></div>
+          <div><div style="font-size:11px;color:var(--text2);margin-bottom:4px;letter-spacing:.06em;text-transform:uppercase">Hasta</div><input class="field" type="date" id="repTo"/></div>
+        </div>
+      </div>
+      <button class="btn-main" onclick="generarReporte()">Ver reporte</button>
+    </div>
+    <div id="repResult"></div>
+  </div>`;
+}
+
+function repModeChange(){
+  const v=document.getElementById('repMode').value;
+  document.getElementById('repCustom').style.display=v==='custom'?'':'none';
+}
+
+function renderReportes(){
+  document.getElementById('mainContent').innerHTML=renderReportesHTML();
+}
+
+function generarReporte(){
+  const mode=document.getElementById('repMode').value;
+  if(!mode){showToast('Elegí un mes o periodo');return;}
+  
+  let items=[];
+  let titulo='';
+  
+  if(mode==='custom'){
+    const from=document.getElementById('repFrom').value;
+    const to=document.getElementById('repTo').value;
+    if(!from||!to){showToast('Elegí fecha de inicio y fin');return;}
+    items=DB.filter(i=>i.fecha>=from&&i.fecha<=to);
+    titulo='Del '+from+' al '+to;
+  } else {
+    items=DB.filter(i=>i.fecha.startsWith(mode));
+    const [y,mo]=mode.split('-');
+    titulo=MONTHS[parseInt(mo)-1]+' '+y;
+  }
+  
+  let ing=0,gas=0,inv=0;
+  const cats={};
+  CATS.forEach(c=>{cats[c]=0;});
+  items.forEach(i=>{
+    if(i.tipo==='ingreso') ing+=i.monto;
+    else if(i.tipo==='inversión') inv+=i.monto;
+    else { gas+=i.monto; cats[i.cat]=(cats[i.cat]||0)+i.monto; }
+  });
+  const ahorro=ing-gas-inv;
+  const ahorroColor=ahorro>=0?'var(--green)':'var(--red)';
+  const mx=Math.max(...Object.values(cats),1);
+  
+  const bars=CATS.map(c=>{
+    const pct=Math.round(cats[c]/mx*100);
+    const pctTotal=gas>0?Math.round(cats[c]/gas*100):0;
+    return `<div class="bar-wrap">
+      <div class="bar-top"><span class="bar-name">${CAT_EMOJI[c]} ${c}</span><span class="bar-amt">${fmt(cats[c])} <span style="font-size:10px;color:var(--text2)">(${pctTotal}%)</span></span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+    </div>`;
+  }).join('');
+
+  const movList=items.length?[...items].reverse().map(movHtml).join(''):'<div class="empty-state">Sin movimientos en este periodo</div>';
+  
+  document.getElementById('repResult').innerHTML=`
+    <div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:12px;font-weight:600">${titulo}</div>
+    
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+      <div class="stat-card" style="grid-column:1/-1">
+        <div class="slbl">Ahorro neto del periodo</div>
+        <div style="font-family:'DM Mono',monospace;font-size:32px;font-weight:700;color:${ahorroColor}">${fmt(ahorro)}</div>
+      </div>
+      <div class="stat-card"><div class="slbl">Ingresé</div><div class="sval g">${fmt(ing)}</div></div>
+      <div class="stat-card"><div class="slbl">Gasté</div><div class="sval r">${fmt(gas)}</div></div>
+      <div class="stat-card"><div class="slbl">Invertí</div><div class="sval p">${fmt(inv)}</div></div>
+      <div class="stat-card"><div class="slbl">Movimientos</div><div class="sval" style="color:var(--text)">${items.length}</div></div>
+    </div>
+
+    ${gas>0?`<div class="ia-box" style="margin-bottom:12px">
+      <div class="modal-title" style="margin-bottom:12px">Desglose de gastos</div>
+      ${bars}
+    </div>`:''}
+
+    <div class="ia-box">
+      <div class="modal-title" style="margin-bottom:12px">Todos los movimientos</div>
+      ${movList}
+    </div>`;
+}
+
+render();
 }
 
 function updateHeader(){
@@ -197,6 +354,7 @@ function render(){
   if(curPage==='resumen') c.innerHTML=renderResumen();
   if(curPage==='movimientos') c.innerHTML=renderMovimientos();
   if(curPage==='agregar') c.innerHTML=renderAgregar();
+  if(curPage==='reportes') c.innerHTML=renderReportesHTML();
   attachEvents();
 }
 
@@ -366,6 +524,15 @@ function doManual(){
 }
 
 render();
+function openModal(){document.getElementById('modalOverlay').classList.add('open');document.body.style.overflow='hidden';}
+function closeModal(){document.getElementById('modalOverlay').classList.remove('open');document.body.style.overflow='';document.getElementById('modalPreview').innerHTML='';document.getElementById('modalAiField').value='';document.getElementById('modalDesc').value='';document.getElementById('modalMonto').value='';}
+function closeModalOutside(e){if(e.target===document.getElementById('modalOverlay'))closeModal();}
+async function modalDoAI(){var v=document.getElementById('modalAiField').value.trim();if(!v)return;document.getElementById('modalLoading').style.display='block';document.getElementById('modalPreview').innerHTML='';try{var res=await callAI([{role:'user',content:v}]);showModalPreview(res);}catch(e){showToast('Error.');}document.getElementById('modalLoading').style.display='none';}
+async function modalDoImg(input){var file=input.files[0];if(!file)return;document.getElementById('modalLoading').style.display='block';var reader=new FileReader();reader.onload=async function(e){var b64=e.target.result.split(',')[1];try{var r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:200,system:SYS,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:file.type,data:b64}},{type:'text',text:'Extrae datos del ticket'}]}]})});var d=await r.json();var t=(d.content||[]).map(function(x){return x.text||'';}).join('');showModalPreview(JSON.parse(t.replace(/```json|```/g,'').trim()));}catch(e){showToast('No pude leer el ticket.');}document.getElementById('modalLoading').style.display='none';};reader.readAsDataURL(file);}
+function showModalPreview(res){var enc=encodeURIComponent(JSON.stringify(res));document.getElementById('modalPreview').innerHTML='<div class="preview-box" style="margin-bottom:12px"><div class="preview-row"><div><div class="preview-desc">'+res.desc+'</div><div class="preview-meta">'+res.tipo+' - '+res.cat+'</div></div><div class="preview-amt">'+fmt(res.monto)+'</div></div><div class="preview-btns"><button class="btn-confirm" onclick="modalConfirmAdd(\''+enc+'\')">Confirmar</button><button style="background:var(--surface);color:var(--text);border:.5px solid var(--border);flex:1;padding:10px;border-radius:var(--r);font-family:Syne,sans-serif;font-size:12px;font-weight:700;cursor:pointer" onclick="document.getElementById(\'modalPreview\').innerHTML=\'\'">Cancelar</button></div></div>';}
+function modalConfirmAdd(enc){var res=JSON.parse(decodeURIComponent(enc));DB.push(Object.assign({},res,{fecha:today()}));save();showToast('Guardado');closeModal();render();}
+function modalDoManual(){var desc=document.getElementById('modalDesc').value.trim();var monto=parseFloat(document.getElementById('modalMonto').value);var tipo=document.getElementById('modalTipo').value;var cat=document.getElementById('modalCat').value;if(!desc||!monto){showToast('Completa descripcion y monto');return;}DB.push({desc:desc,monto:monto,tipo:tipo,cat:cat,fecha:today()});save();showToast('Guardado');closeModal();render();}
+
 </script>
 </body>
 </html>
