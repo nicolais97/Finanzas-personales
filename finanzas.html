@@ -98,6 +98,7 @@ body{display:flex;flex-direction:column;max-width:430px;margin:0 auto}
   <div class="tab on" onclick="goPage('resumen')">Resumen</div>
   <div class="tab" onclick="goPage('historial')">Historial</div>
   <div class="tab" onclick="goPage('reportes')">Reportes</div>
+  <div class="tab" onclick="goPage('recurrentes')">Auto</div>
 </div>
 
 <div class="cnt" id="cnt"></div>
@@ -156,7 +157,7 @@ var fl={tipo:'',cat:''};
 function goPage(name){
   pg=name;
   var ts=document.querySelectorAll('#tabs .tab');
-  ['resumen','historial','reportes'].forEach(function(n,i){ts[i].classList.toggle('on',n===name);});
+  ['resumen','historial','reportes','recurrentes'].forEach(function(n,i){ts[i].classList.toggle('on',n===name);});
   render();
 }
 
@@ -199,6 +200,7 @@ function render(){
   if(pg==='resumen') c.innerHTML=pgRes();
   if(pg==='historial') c.innerHTML=pgHist();
   if(pg==='reportes') c.innerHTML=pgRep();
+  if(pg==='recurrentes') c.innerHTML=pgRec();
 }
 
 function pgRes(){
@@ -367,6 +369,115 @@ function doManual(){
   save();toast('Guardado ✓');closeSheet();render();
 }
 
+
+// RECURRENTES
+var REC=[];
+try{var _r=localStorage.getItem('fin_rec');if(_r)REC=JSON.parse(_r);}catch(e){}
+function saveRec(){try{localStorage.setItem('fin_rec',JSON.stringify(REC));}catch(e){}}
+
+function checkRecurrentes(){
+  var hoyStr=hoy();
+  var d=new Date();
+  var diaSemana=d.getDay(); // 0=dom,1=lun...
+  var diaMes=d.getDate();
+  REC.forEach(function(r,ri){
+    var debe=false;
+    if(r.frec==='diaria') debe=true;
+    if(r.frec==='semanal' && diaSemana===parseInt(r.diaS||1)) debe=true;
+    if(r.frec==='mensual' && diaMes===parseInt(r.diaM||1)) debe=true;
+    if(debe){
+      // check if already registered today
+      var yaReg=DB.some(function(x){ return x.recId===ri && x.fecha===hoyStr; });
+      if(!yaReg){
+        DB.push({desc:r.desc,monto:r.monto,tipo:r.tipo,cat:r.cat,fecha:hoyStr,recId:ri});
+        save();
+      }
+    }
+  });
+}
+
+function pgRec(){
+  var freqLabel={diaria:'Diaria',semanal:'Semanal',mensual:'Mensual'};
+  var dias=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  var lista=REC.length?REC.map(function(r,i){
+    var fl=freqLabel[r.frec]||r.frec;
+    var extra='';
+    if(r.frec==='semanal') extra=' · '+dias[parseInt(r.diaS||1)];
+    if(r.frec==='mensual') extra=' · día '+r.diaM;
+    var isI=r.tipo==='ingreso',isV=r.tipo==='inversión';
+    var cl=isI?'var(--ac)':isV?'var(--pur)':'var(--red)';
+    var sg=isI?'+':isV?'':'−';
+    return '<div class="mi">'+
+      '<div class="mico" style="background:var(--sf2)">🔄</div>'+
+      '<div class="minf"><div class="mds">'+r.desc+'</div><div class="mmt">'+fl+extra+' · '+r.cat+'</div></div>'+
+      '<div style="display:flex;align-items:center;gap:6px">'+
+        '<div class="mam" style="color:'+cl+'">'+sg+fmt(r.monto)+'</div>'+
+        '<button onclick="delRec('+i+')" style="background:transparent;border:none;color:var(--tx2);font-size:16px;cursor:pointer;padding:4px 6px;flex-shrink:0">🗑</button>'+
+      '</div></div>';
+  }).join('') : '<div class="empty">Sin cargas automáticas</div>';
+
+  return '<div class="box" style="margin-bottom:14px">'+
+    '<div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--tx2);font-weight:600;margin-bottom:14px">Nueva carga automática</div>'+
+    '<div class="g2">'+
+      '<input class="fld" id="rDsc" placeholder="Descripción"/>'+
+      '<input class="fld" type="number" id="rMnt" placeholder="Monto"/>'+
+    '</div>'+
+    '<div class="g2">'+
+      '<select class="fld" id="rTip"><option value="gasto">Gasto</option><option value="ingreso">Ingreso</option><option value="inversión">Inversión</option></select>'+
+      '<select class="fld" id="rCat"><option>Comida</option><option>Transporte</option><option>Salud</option><option>Ocio</option><option>Inversiones</option><option>Otros</option></select>'+
+    '</div>'+
+    '<select class="fld" id="rFrq" onchange="recFrecChg()" style="margin-bottom:8px">'+
+      '<option value="diaria">Diaria — se registra todos los días</option>'+
+      '<option value="semanal">Semanal — elegí el día</option>'+
+      '<option value="mensual">Mensual — elegí el día del mes</option>'+
+    '</select>'+
+    '<div id="rExtra"></div>'+
+    '<button class="btn" onclick="addRec()">Guardar carga automática</button>'+
+    '</div>'+
+    '<div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--tx2);font-weight:600;margin-bottom:12px">Configuradas</div>'+
+    lista;
+}
+
+function recFrecChg(){
+  var v=document.getElementById('rFrq').value;
+  var el=document.getElementById('rExtra');
+  if(!el) return;
+  if(v==='semanal'){
+    el.innerHTML='<select class="fld" id="rDiaS" style="margin-bottom:8px"><option value="1">Lunes</option><option value="2">Martes</option><option value="3">Miércoles</option><option value="4">Jueves</option><option value="5">Viernes</option><option value="6">Sábado</option><option value="0">Domingo</option></select>';
+  } else if(v==='mensual'){
+    var opts='';for(var i=1;i<=31;i++) opts+='<option value="'+i+'">Día '+i+'</option>';
+    el.innerHTML='<select class="fld" id="rDiaM" style="margin-bottom:8px">'+opts+'</select>';
+  } else {
+    el.innerHTML='';
+  }
+}
+
+function addRec(){
+  var desc=document.getElementById('rDsc').value.trim();
+  var monto=parseFloat(document.getElementById('rMnt').value);
+  var tipo=document.getElementById('rTip').value;
+  var cat=document.getElementById('rCat').value;
+  var frec=document.getElementById('rFrq').value;
+  if(!desc||!monto){toast('Completá descripción y monto');return;}
+  var r={desc:desc,monto:monto,tipo:tipo,cat:cat,frec:frec};
+  if(frec==='semanal'){var ds=document.getElementById('rDiaS');r.diaS=ds?ds.value:'1';}
+  if(frec==='mensual'){var dm=document.getElementById('rDiaM');r.diaM=dm?dm.value:'1';}
+  REC.push(r);
+  saveRec();
+  // register today if applies
+  checkRecurrentes();
+  toast('Guardado ✓');
+  render();
+}
+
+function delRec(i){
+  if(!confirm('¿Borrar esta carga automática?')) return;
+  REC.splice(i,1);
+  saveRec();
+  render();
+}
+
+checkRecurrentes();
 render();
 </script>
 </body>
